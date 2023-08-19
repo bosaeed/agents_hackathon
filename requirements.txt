@@ -1,0 +1,8 @@
+gradio
+openai
+tiktoken
+langchain
+python-dotenv
+weaviate-client
+cohere
+xmlrpc
