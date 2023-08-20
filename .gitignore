@@ -3,3 +3,4 @@ env/*
 __pycache__/*
 test.py
 state_of_the_union.txt
+test/*
