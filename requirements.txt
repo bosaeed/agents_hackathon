@@ -6,3 +6,4 @@ python-dotenv
 weaviate-client
 cohere
 pydantic
+google-api-python-client

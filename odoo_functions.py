@@ -15,7 +15,7 @@ class odoo():
 
 
     def search_products(self,product_name: str):
-        return self.models.execute_kw(self.db, self.uid, self.password, 'product.product', 'search_read', [[['name', 'ilike', product_name]]], {'fields': ['name', 'list_price'], 'limit': 5})
+        return self.models.execute_kw(self.db, self.uid, self.password, 'product.product', 'search_read', [[['name', 'ilike', product_name]]], {'fields': ['name', 'list_price'], 'limit': 10})
 
     def place_order(self,product_name: str , quantity: int):
         return f"{quantity} {product_name} order is placed"

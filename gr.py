@@ -25,12 +25,14 @@ import weaviate
 import langchain
 from langchain.chains import RetrievalQAWithSourcesChain
 from langchain.chat_models import ChatOpenAI 
+from langchain.llms import Cohere
 from langchain.memory import ConversationBufferMemory
 from langchain.schema import HumanMessage ,AIMessage
 from langchain.agents import Tool , AgentType,initialize_agent
 from langchain.tools import StructuredTool
 from langchain.prompts import MessagesPlaceholder
 from langchain.agents.agent_toolkits import create_retriever_tool ,create_conversational_retrieval_agent
+from langchain.chat_models import JinaChat
 
 import gradio as gr
 
@@ -48,6 +50,9 @@ odoo_client = odoo(ODOO_URL,ODOO_DB,ODOO_USERNAME,ODOO_API)
 langchain.debug = True
 langchain.verbose = True
 
+
+
+
 client = weaviate.Client(url=WEAVIATE_URL, auth_client_secret=weaviate.AuthApiKey(WEAVIATE_API_KEY),additional_headers={
         "X-Cohere-Api-Key": COHERE_API_KEY, # Replace with your cohere key
         })
@@ -56,21 +61,14 @@ client = weaviate.Client(url=WEAVIATE_URL, auth_client_secret=weaviate.AuthApiKe
 loader = CSVLoader(file_path='./data/products.csv')
 docs = loader.load()
 
-embeddings = CohereEmbeddings(cohere_api_key=COHERE_API_KEY)
+embeddings = CohereEmbeddings()
 
 db = Weaviate.from_documents(docs, embeddings, client=client, by_text=False)
 
 
-# memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+from langchain.utilities import GoogleSearchAPIWrapper
 
-
-# class SearchProductInput(BaseModel):
-#     product_name: str 
-
-
-# class PlaceOrderInput(BaseModel):
-#     product_name: str
-#     quantity: int
+search = GoogleSearchAPIWrapper()
 
 
 tools =[
@@ -81,28 +79,39 @@ tools =[
     # ),
     Tool.from_function(
         odoo_client.search_products,
-        "search_products",
-        "useful when search for products , services or food at ecommerce store",
+        "search_store",
+        "useful when search for products services or food at Ama ecommerce store to get price product_name must be one of provided products",
         # args_schema=SearchProductInput
     ),
     StructuredTool.from_function(
         odoo_client.place_order,
         "place_order",
-        "useful when place order at ecommerce store",
+        "useful when place order at Ama ecommerce store",
         # args_schema=PlaceOrderInput
+    ),
+    Tool(
+    name="Search useful product",
+    description="Search for product that can help solve customer problem",
+    func=search.run,
     )
     ]
 
 chat_history = MessagesPlaceholder(variable_name="chat_history")
 
+
+cohere_llm = Cohere(model="command")
+jina_chat = JinaChat(temperature=0)
+openai_chat = ChatOpenAI(temperature=0, model="gpt-4")
+
 # memory = ConversationBufferMemory(memory_key="chat_history")
-agent = initialize_agent(tools,ChatOpenAI(temperature=0), agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION, verbose=True ,agent_kwargs={
+agent = initialize_agent(tools,openai_chat, agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION, verbose=True ,agent_kwargs={
         'prefix': agent_prompt.PREFIX, 
         'format_instructions': agent_prompt.FORMAT_INSTRUCTIONS,
         'suffix': agent_prompt.SUFFIX,
         "memory_prompts": [chat_history],
         "input_variables": ["input", "agent_scratchpad", "chat_history" ,"products"]
     })#, memory=memory)
+
 
 
 # print(odoo_client.search_products("burger"))
@@ -119,10 +128,11 @@ def predict(message, history):
     # return chain( {"question": message , "chat_history":history_langchain_format}, return_only_outputs=True )['answer']
 
     # ag_output = agent( {"input": message  , "chat_history": history_langchain_format} )
-    products = db.similarity_search(message)
+    products = db.similarity_search(message , 10)
+    products = [p.page_content for p in products]
     print("********************")
-    print(products[0].page_content)
-    ag_output = agent.run( input=message  , chat_history=history_langchain_format ,products=products[0].page_content)
+    print(products)
+    ag_output = agent.run( input=message  , chat_history=history_langchain_format ,products=" ".join(products))
 
     print(ag_output)
     # return ag_output['output']
@@ -131,4 +141,4 @@ def predict(message, history):
 
 
 
-gr.ChatInterface(predict).queue().launch(share=True)
+gr.ChatInterface(predict).queue().launch(server_name="0.0.0.0", server_port=7860)
